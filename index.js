@@ -128,7 +128,7 @@ server.post('/messages', async (req, res) => {
 
     const { user } = req.headers;
     try {
-        const data = db.collection('participants').findOne({
+        const data = await db.collection('participants').findOne({
             name: user
         });
         if (!data) {
@@ -141,7 +141,7 @@ server.post('/messages', async (req, res) => {
     }
 
     try {
-        db.collection('messages').insertOne({
+        await db.collection('messages').insertOne({
             'from': user,
             'to': req.body.to,
             'text': req.body.text,
@@ -155,6 +155,42 @@ server.post('/messages', async (req, res) => {
     
     res.sendStatus(201);
 })
+
+// Status routes and inactive users remotion
+server.post('/status', async (req, res) => {
+    const { user } = req.headers;
+    let id;
+
+    try {
+        const data = await db.collection('participants').findOne({
+            'name': user
+        });
+        if (data) {
+            id = data._id;
+        } else {
+            res.sendStatus(404);
+            return;
+        }
+    } catch (err) {
+        console.log('erro no primeiro try');
+        res.sendStatus(500);
+        return;
+    }
+
+    try {
+        await db.collection('participants').updateOne(
+            { _id: id },
+            { $set: { lastStatus: Date.now() } }
+        );
+    } catch (err) {
+        console.log(id);
+        console.log('erro no segundo try');
+        res.sendStatus(500);
+        return;
+    }
+
+    res.sendStatus(200);
+});
 
 server.listen(5000, () => {
     console.log('Listening at port 5000...');
