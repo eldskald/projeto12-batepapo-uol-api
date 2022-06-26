@@ -1,5 +1,5 @@
 import express from 'express';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
 import joi from 'joi';
 import cors from 'cors';
@@ -54,7 +54,7 @@ server.get('/participants', async (req, res) => {
     try {
         const data = await db.collection('participants').find().toArray();
         res.status(200).send(data);
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -76,7 +76,7 @@ server.post('/participants', async (req, res) => {
             res.sendStatus(409);
             return;
         }
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -86,7 +86,7 @@ server.post('/participants', async (req, res) => {
             'name': body.name,
             'lastStatus': Date.now()
         });
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -99,7 +99,7 @@ server.post('/participants', async (req, res) => {
             'type': 'status',
             'time': dayjs().format('HH:mm:ss')
         })
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -118,23 +118,20 @@ server.get('/messages', async (req, res) => {
         { from: user },
         { to: {$in: [user, 'Todos']} }
     ]};
-    const dbSort = { time: -1 };
     let data;
 
     try {
         if (limit) {
             data = await db.collection('messages')
                 .find(dbQuery)
-                .sort(dbSort)
                 .limit(limit)
                 .toArray();
         } else {
             data = await db.collection('messages')
                 .find(dbQuery)
-                .sort(dbSort)
                 .toArray();
         }
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -159,7 +156,7 @@ server.post('/messages', async (req, res) => {
             res.sendStatus(422);
             return;
         }
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -172,13 +169,104 @@ server.post('/messages', async (req, res) => {
             'type': body.type,
             'time': dayjs().format('HH:mm:ss')
         });
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
     
     res.sendStatus(201);
 })
+
+server.delete('/messages/:messageId', async (req, res) => {
+    const id = new ObjectId(req.params.messageId);
+    const { user } = req.headers;
+    let message;
+
+    try {
+        message = await db.collection('messages').findOne({
+            _id: id
+        });
+        if (!message) {
+            res.sendStatus(404);
+            return;
+        }
+    } catch {
+        res.sendStatus(500);
+        return;
+    }
+
+    if (message.from !== user) {
+        res.sendStatus(401);
+        return;
+    }
+
+    try {
+        await db.collection('messages').deleteOne({
+            _id: id
+        });
+    } catch {
+        res.sendStatus(500);
+        return;
+    }
+
+    res.sendStatus(200);
+});
+
+server.put('/messages/:messageId', async (req, res) => {
+    const id = new ObjectId(req.params.messageId);
+    const { user } = req.headers;
+    const body = objectStripHtml(req.body);
+    let message;
+
+    const validation = messageSchema.validate(body);
+    if (validation.error) {
+        res.sendStatus(422);
+        return;
+    }
+
+    try {
+        const data = await db.collection('participants').findOne({
+            name: user
+        });
+        if (!data) {
+            res.sendStatus(422);
+            return;
+        }
+    } catch {
+        res.sendStatus(500);
+        return;
+    }
+
+    try {
+        message = await db.collection('messages').findOne({
+            _id: id
+        });
+        if (!message) {
+            res.sendStatus(404);
+            return;
+        }
+    } catch {
+        res.sendStatus(500);
+        return;
+    }
+
+    try {
+        await db.collection('messages').updateOne(
+            { _id: id },
+            { $set: {
+                'to': body.to,
+                'text': body.text,
+                'type': body.type,
+                'time': dayjs().format('HH:mm:ss')
+            } }
+        );
+    } catch {
+        res.sendStatus(500);
+        return;
+    }
+
+    res.sendStatus(200);
+});
 // ----------------------------------------------------------------------------
 
 
@@ -198,7 +286,7 @@ server.post('/status', async (req, res) => {
             res.sendStatus(404);
             return;
         }
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -208,7 +296,7 @@ server.post('/status', async (req, res) => {
             { _id: id },
             { $set: { lastStatus: Date.now() } }
         );
-    } catch (err) {
+    } catch {
         res.sendStatus(500);
         return;
     }
@@ -223,7 +311,7 @@ setInterval(async () => {
     try {
         const data = await db.collection('participants').find().toArray();
         users = [...data];
-    } catch (err) {
+    } catch {
         return;
     }
 
@@ -233,7 +321,7 @@ setInterval(async () => {
                 await db.collection('participants').deleteOne({
                     _id: users[i]._id
                 });
-            } catch (err) {
+            } catch {
                 return;
             }
 
@@ -245,7 +333,7 @@ setInterval(async () => {
                     'type': 'status',
                     'time': dayjs().format('HH:mm:ss')
                 });
-            } catch (err) {
+            } catch {
                 return;
             }
         }
